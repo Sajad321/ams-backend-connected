@@ -8,7 +8,8 @@ import uvicorn
 import os
 from tortoise.contrib.fastapi import register_tortoise
 
-from routers import students, insitute_attendance, users
+from routers import students, insitute_attendance, users, sync
+from routers.zk_connection import conn
 
 
 def create_app(test_config=None):
@@ -35,6 +36,7 @@ def create_app(test_config=None):
     app.include_router(students.router)
     app.include_router(insitute_attendance.router)
     app.include_router(users.router)
+    app.include_router(sync.sync_router, tags=["Sync"])
 
     @app.exception_handler(StarletteHTTPException)
     async def my_exception_handler(request, exception):
@@ -68,9 +70,13 @@ app = create_app()
 @app.get('/shutdown')
 def shut():
     pid = os.getpid()
+    conn.disconnect()
     print(pid)
     os.kill(pid, signal.CTRL_C_EVENT)
 
 
 if __name__ == "__main__":
+    if(not os.path.exists(os.path.join(os.getenv('LOCALAPPDATA'), 'ams'))):
+        os.mkdir(os.path.join(os.getenv('LOCALAPPDATA'),
+                              'ams'))
     uvicorn.run(app, host="0.0.0.0", port=8000)

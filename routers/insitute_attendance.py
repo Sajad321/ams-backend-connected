@@ -9,6 +9,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from typing import Optional
 
 from datetime import datetime
+import requests
+from routers.zk_connection import conn
 
 router = APIRouter()
 
@@ -358,6 +360,9 @@ async def patch_students_attendance(student_attendance_id: int, attended: int):
         now_time = now.strftime("%H:%M")
         await StudentAttendance.filter(id=student_attendance_id).update(attended=attended, time=now_time)
         q = await StudentAttendance.filter(id=student_attendance_id).prefetch_related('student').first()
+        async with in_transaction() as conn:
+            new = TemporaryPatch(unique_id=q['unique_id'], model_id=7)
+            await new.save(using_db=conn)
         return {
             "success": True,
             "student_id": q.student.id,
@@ -373,6 +378,9 @@ async def patch_students_attendance(student_attendance_id: int, attended: int):
 @router.get('/attendance-start')
 async def attendance_start(student_id):
     # try:
+    student_id = await Student.filter(unique_id=student_id).first()
+    student_id = student_id.id
+    print(student_id)
     student = await Student.filter(id=student_id).first().prefetch_related('institute')
     student = student.__dict__
     student['institute'] = student['_institute']
@@ -415,7 +423,7 @@ async def attendance_start(student_id):
     stu = {}
     for record in installments_list:
         stu.update(
-            {'installment_name': record.installment.name, "received": record.receive,
+            {'installment_name': record.installment.name, "received": record.received,
              "installment_id": record.installment.id})
         finalist.append(stu)
         stu = {}
@@ -423,5 +431,24 @@ async def attendance_start(student_id):
     student.update({"incrementally_absence": incrementally_absence})
     student.update({"installments": finalist})
     return student
-# except:
-#         raise StarletteHTTPException(500, "internal Server Error")
+    # except:
+    #     raise StarletteHTTPException(500, "internal Server Error")
+
+
+@router.get('/biotime')
+async def get_biotime():
+    # try:
+    if conn:
+        last_finger = None
+        for att in conn.get_attendance():
+            last_finger = att
+        print(last_finger)
+        result = await attendance_start(last_finger.user_id)
+        print(result)
+        # Clear attendances records
+        conn.clear_attendance()
+        if last_finger:
+            return result
+    return StarletteHTTPException(404, "Not Found")
+    # except:
+    #     raise StarletteHTTPException(500, "internal Server Error")

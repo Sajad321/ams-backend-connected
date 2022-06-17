@@ -116,22 +116,31 @@ async def post_institute(name: str):
 @router.get('/institute')
 async def get_institute():
     try:
+        institutes = await Institute.all()
+        for institute in institutes:
+            name = institute.name
+            if(not os.path.exists(os.path.join(os.getenv('LOCALAPPDATA'), 'ams/images', f'{name}'))):
+                os.mkdir(os.path.join(os.getenv('LOCALAPPDATA'),
+                                      'ams/images', f'{name}'))
+            if(not os.path.exists(os.path.join(os.getenv('LOCALAPPDATA'), 'ams/qr', f'{name}'))):
+                os.mkdir(os.path.join(os.getenv('LOCALAPPDATA'),
+                                      'ams/qr', f'{name}'))
         return {'success': True,
-                "institutes": await Institute.all()}
+                "institutes": institutes}
     except:
         raise StarletteHTTPException(404, "Not Found")
 
 
 # Update institute
-@router.patch('/institute')
-async def patch_institute(institute_id: int, name: str):
-    try:
-        new = await Institute.filter(id=institute_id).first()
-        os.rename("./qr/" + new.name, "./qr/" + name)
-        await Institute.filter(id=institute_id).update(name=name)
-        return {"success": True}
-    except:
-        raise StarletteHTTPException(500, "Internal Server Error")
+# @router.patch('/institute')
+# async def patch_institute(institute_id: int, name: str):
+#     try:
+#         new = await Institute.filter(id=institute_id).first()
+#         os.rename("./qr/" + new.name, "./qr/" + name)
+#         await Institute.filter(id=institute_id).update(name=name)
+#         return {"success": True}
+#     except:
+#         raise StarletteHTTPException(500, "Internal Server Error")
 
 
 # class Students(BaseModel):
@@ -143,105 +152,105 @@ async def patch_institute(institute_id: int, name: str):
 
 # To insert Student
 
-@router.post("/student")
-async def post_student(name: str = Query("name"),
-                       dob: Optional[str] = Query("dob"),
-                       institute_id: int = Query("institute_id"),
-                       phone: Optional[int] = Query("phone"),
-                       note: Optional[str] = Query("note"),
-                       photo: bytes = File(None)):
-    try:
-        async with in_transaction() as conn:
-            new_student = Student(name=name, dob=dob, institute_id=institute_id, phone=phone,
-                                  note=note)
+# @router.post("/student")
+# async def post_student(name: str = Query("name"),
+#                        dob: Optional[str] = Query("dob"),
+#                        institute_id: int = Query("institute_id"),
+#                        phone: Optional[int] = Query("phone"),
+#                        note: Optional[str] = Query("note"),
+#                        photo: bytes = File(None)):
+#     try:
+#         async with in_transaction() as conn:
+#             new_student = Student(name=name, dob=dob, institute_id=institute_id, phone=phone,
+#                                   note=note)
 
-            await new_student.save(using_db=conn)
-            institute_name = await Institute.filter(id=institute_id).first()
-            institute_name = institute_name.name
-            query = await Student.filter(id=new_student.id).first()
+#             await new_student.save(using_db=conn)
+#             institute_name = await Institute.filter(id=institute_id).first()
+#             institute_name = institute_name.name
+#             query = await Student.filter(id=new_student.id).first()
 
-            attendance = await Attendance.filter(
-                institute_id=institute_id).order_by(
-                '-date').limit(1).all()
-            attendance_id = [_id.id for _id in attendance]
-            for _id in attendance_id:
-                new = StudentAttendance(
-                    student_id=new_student.id, attendance_id=_id)
-                await new.save(using_db=conn)
-            if photo is not None:
-                photo = BytesIO(photo)
-                image = photo_save(photo, query.id, query.name,
-                                   institute_name)
-                query.photo = image['image_path']
-            qr = qr_gen(query.id, name, institute_name)
-            await Student.filter(id=new_student.id).update(qr=qr['qrpath'])
-            installment = await Installment.filter(
-                institute_id=institute_id).all()
-            for _ in installment:
-                new_install = StudentInstallment(student_id=query.id, institute_id=institute_id,
-                                                 installment_id=_.id)
-                await new_install.save(using_db=conn)
-            return {"success": True}, 200
-    except:
-        raise StarletteHTTPException(500, "Internal Server Error")
+#             attendance = await Attendance.filter(
+#                 institute_id=institute_id).order_by(
+#                 '-date').limit(1).all()
+#             attendance_id = [_id.id for _id in attendance]
+#             for _id in attendance_id:
+#                 new = StudentAttendance(
+#                     student_id=new_student.id, attendance_id=_id)
+#                 await new.save(using_db=conn)
+#             if photo is not None:
+#                 photo = BytesIO(photo)
+#                 image = photo_save(photo, query.id, query.name,
+#                                    institute_name)
+#                 query.photo = image['image_path']
+#             qr = qr_gen(query.id, name, institute_name)
+#             await Student.filter(id=new_student.id).update(qr=qr['qrpath'])
+#             installment = await Installment.filter(
+#                 institute_id=institute_id).all()
+#             for _ in installment:
+#                 new_install = StudentInstallment(student_id=query.id, institute_id=institute_id,
+#                                                  installment_id=_.id)
+#                 await new_install.save(using_db=conn)
+#             return {"success": True}, 200
+#     except:
+#         raise StarletteHTTPException(500, "Internal Server Error")
 
 
 # to change student info
-@router.patch('/student')
-async def patch_student(student_id, name: str, dob, institute_id, ban: int = 0,
-                        note: Optional[str] = "لا يوجد "):
-    try:
-        institute = await Institute.filter(id=institute_id).first()
-        institute_name = institute.name
-        new = qr_gen(student_id, name, institute_name)
-        await Student.filter(id=student_id).update(name=name, dob=dob, institute_id=institute_id,
-                                                   note=note, banned=ban, qr=new['qrpath'])
-        return {
-            'success': True
-        }
-    except:
-        raise StarletteHTTPException(500, "Internal Server Error")
+# @router.patch('/student')
+# async def patch_student(student_id, name: str, dob, institute_id, ban: int = 0,
+#                         note: Optional[str] = "لا يوجد "):
+#     try:
+#         institute = await Institute.filter(id=institute_id).first()
+#         institute_name = institute.name
+#         new = qr_gen(student_id, name, institute_name)
+#         await Student.filter(id=student_id).update(name=name, dob=dob, institute_id=institute_id,
+#                                                    note=note, banned=ban, qr=new['qrpath'])
+#         return {
+#             'success': True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "Internal Server Error")
 
 
 # Delete student by ID
-@router.delete('/student')
-async def delete_student(student_id: int):
-    try:
-        query = await Student.filter(id=student_id).first()
-        if query.photo is not None:
-            os.remove(query.photo)
-        if os.path.exists(query.qr):
-            os.remove(query.qr)
-        await Student.filter(id=student_id).delete()
-        return {
-            'success': True
-        }
-    except:
-        raise StarletteHTTPException(500, "Internal Server Error")
+# @router.delete('/student')
+# async def delete_student(student_id: int):
+#     try:
+#         query = await Student.filter(id=student_id).first()
+#         if query.photo is not None:
+#             os.remove(query.photo)
+#         if os.path.exists(query.qr):
+#             os.remove(query.qr)
+#         await Student.filter(id=student_id).delete()
+#         return {
+#             'success': True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "Internal Server Error")
 
 
 # To change Qrpath
-@router.patch('/qr')
-async def qr(student_id, qr: str):
-    try:
-        await Student.filter(id=student_id).update(qr=qr)
-        return {
-            'success': True
-        }
-    except:
-        raise StarletteHTTPException(500, "Internal Server Error")
+# @router.patch('/qr')
+# async def qr(student_id, qr: str):
+#     try:
+#         await Student.filter(id=student_id).update(qr=qr)
+#         return {
+#             'success': True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "Internal Server Error")
 
 
 # To change ban state of student
-@router.patch('/banned')
-async def banned(student_id: int, ban: int = 0):
-    try:
-        await Student.filter(id=student_id).update(banned=ban)
-        return {
-            "success": True
-        }
-    except:
-        raise StarletteHTTPException(500, "Internal Server Error")
+# @router.patch('/banned')
+# async def banned(student_id: int, ban: int = 0):
+#     try:
+#         await Student.filter(id=student_id).update(banned=ban)
+#         return {
+#             "success": True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "Internal Server Error")
 
 
 # To get students info by institute
@@ -314,7 +323,7 @@ async def student_info(institute_id: int = None, number_of_students: int = 100, 
 
 
 @router.get("/banned-students")
-async def student_info(institute_id: int = None, number_of_students: int = 100, page: int = 1, search: str = None):
+async def banned_student_info(institute_id: int = None, number_of_students: int = 100, page: int = 1, search: str = None):
     try:
         if institute_id is not None:
             if search is None:
@@ -419,21 +428,21 @@ async def get_photo(student_id):
 
 # To change student's photo
 
-@router.patch('/photo')
-async def patch_photo(student_id: int, photo: bytes = File("photo")):
-    try:
-        photo = BytesIO(photo)
-        stud = await Student.filter(id=student_id).first()
-        institute = await Institute.filter(id=stud.institute).first()
-        if stud.photo is not None:
-            os.remove(stud.photo)
-        save = photo_save(photo, student_id, stud.name, institute.name)
-        await Student.filter(id=student_id).update(photo=save['image_path'])
-        return {
-            'success': True
-        }
-    except:
-        raise StarletteHTTPException(500, "internal Server Error")
+# @router.patch('/photo')
+# async def patch_photo(student_id: int, photo: bytes = File("photo")):
+#     try:
+#         photo = BytesIO(photo)
+#         stud = await Student.filter(id=student_id).first()
+#         institute = await Institute.filter(id=stud.institute).first()
+#         if stud.photo is not None:
+#             os.remove(stud.photo)
+#         save = photo_save(photo, student_id, stud.name, institute.name)
+#         await Student.filter(id=student_id).update(photo=save['image_path'])
+#         return {
+#             'success': True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "internal Server Error")
 
 
 @router.get('/qr')
@@ -454,62 +463,62 @@ async def get_qr(student_id):
 # To insert Installment
 
 
-@router.post("/installment")
-async def post_installment(name: str, date: str, institute_id: int):
-    try:
-        async with in_transaction() as conn:
-            new = Installment(name=name, date=date,
-                              institute_id=institute_id)
-            await new.save(using_db=conn)
-            students = await Student.filter(
-                institute_id=institute_id).all()
+# @router.post("/installment")
+# async def post_installment(name: str, date: str, institute_id: int):
+#     try:
+#         async with in_transaction() as conn:
+#             new = Installment(name=name, date=date,
+#                               institute_id=institute_id)
+#             await new.save(using_db=conn)
+#             students = await Student.filter(
+#                 institute_id=institute_id).all()
 
-            for stu in students:
-                student_instal = StudentInstallment(installment_id=new.id, student_id=stu.id,
-                                                    institute_id=stu.institute)
-                await student_instal.save(using_db=conn)
-            return {"success": True}
-    except:
-        raise StarletteHTTPException(500, "internal Server Error")
+#             for stu in students:
+#                 student_instal = StudentInstallment(installment_id=new.id, student_id=stu.id,
+#                                                     institute_id=stu.institute)
+#                 await student_instal.save(using_db=conn)
+#             return {"success": True}
+#     except:
+#         raise StarletteHTTPException(500, "internal Server Error")
 
 
 # To change installment
-@router.patch('/installment')
-async def patch_installment(name: str, institute_id: int, date: str, _id: int):
-    try:
-        await Installment.filter(id=_id).update(name=name, date=date, institute_id=institute_id)
-        return {"success": True}
-    except:
-        raise StarletteHTTPException(500, "internal Server Error")
+# @router.patch('/installment')
+# async def patch_installment(name: str, institute_id: int, date: str, _id: int):
+#     try:
+#         await Installment.filter(id=_id).update(name=name, date=date, institute_id=institute_id)
+#         return {"success": True}
+#     except:
+#         raise StarletteHTTPException(500, "internal Server Error")
 
 
 # To insert student Installment
 
-@router.post("/student-installment")
-async def student_installment(student_id: int, install_id: int, received: int, institute_id):
-    try:
-        async with in_transaction() as conn:
-            new = StudentInstallment(
-                student_id=student_id, installment_id=install_id, received=received, institute_id=institute_id)
-            await new.save(using_db=conn)
-        return {
-            "success": True
-        }
-    except:
-        raise StarletteHTTPException(500, "internal Server Error")
+# @router.post("/student-installment")
+# async def student_installment(student_id: int, install_id: int, received: int, institute_id):
+#     try:
+#         async with in_transaction() as conn:
+#             new = StudentInstallment(
+#                 student_id=student_id, installment_id=install_id, received=received, institute_id=institute_id)
+#             await new.save(using_db=conn)
+#         return {
+#             "success": True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "internal Server Error")
 
 
 # To change student installment
-@router.patch('/student-installment')
-async def patch_student_installment(student_installment_id: int, receive: int
-                                    ):
-    try:
-        await StudentInstallment.filter(id=student_installment_id).update(receive=receive)
-        return {
-            "success": True
-        }
-    except:
-        raise StarletteHTTPException(500, "internal Server Error")
+# @router.patch('/student-installment')
+# async def patch_student_installment(student_installment_id: int, received: int
+#                                     ):
+#     try:
+#         await StudentInstallment.filter(id=student_installment_id).update(received=received)
+#         return {
+#             "success": True
+#         }
+#     except:
+#         raise StarletteHTTPException(500, "internal Server Error")
 
 
 # To get students installments bulky or by institute id
@@ -557,7 +566,7 @@ async def student_install(number_of_students: int = 100, page: int = 1, search: 
             stu['installment_received'] = {}
             for record in query:
                 dicto.update({"id": record.id,
-                              "received": record.receive,
+                              "received": record.received,
                               "installment_id": record.installment})
                 newlist.append(dicto)
                 dicto = {}
@@ -586,7 +595,7 @@ async def get_student_installment(student_id):
         stu['installment_received'] = {}
         for record in query:
             dicto.update({"id": record.id,
-                          "received": record.receive,
+                          "received": record.received,
                           "installment_id": record.installment})
             newlist.append(dicto)
             dicto = {}
@@ -601,12 +610,12 @@ async def get_student_installment(student_id):
 
 
 # To change student installment bulky by installment_id
-@router.patch('/student-install-bid')
-async def student_installments_by_install_id(installment_id: int):
-    await StudentInstallment.filter(installment_id=installment_id).update(receive=1)
-    return {
-        "success": True
-    }
+# @router.patch('/student-install-bid')
+# async def student_installments_by_install_id(installment_id: int):
+#     await StudentInstallment.filter(installment_id=installment_id).update(received=1)
+#     return {
+#         "success": True
+#     }
 
 
 # To get institutes

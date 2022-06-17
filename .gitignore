@@ -15,3 +15,7 @@ path.py
 
 alembic
 alembic.ini
+
+ams
+pyzk
+users_finger.pk
