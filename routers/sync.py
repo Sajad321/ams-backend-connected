@@ -109,6 +109,11 @@ async def get_all():
                 new = Installment(id=installment['id'], name=installment['name'], date=installment['date'], unique_id=installment['unique_id'],
                                   sync_state=1)
                 await new.save(using_db=conn)
+        elif installment['unique_id'] in installments and installment['delete_state'] == 0 and installment['patch_state'] == 1:
+            await Installment.filter(unique_id=installment['unique_id']).update(name=installment['name'],
+                                                                                date=installment["date"],
+                                                                                sync_state=1)
+
     institutes_req = requests.get(f'{HOST}/institutes')
     institutes = await Institute.all().values('name')
     institutes = [n['name'] for n in institutes]
@@ -199,7 +204,7 @@ async def get_all():
     for attendance in attendance_req:
         if attendance['unique_id'] not in attendances:
             async with in_transaction() as conn:
-                new = Attendance(id=attendance['id'], date=attendance['date'], unique_id=attendance['unique_id'],
+                new = Attendance(date=attendance['date'], unique_id=attendance['unique_id'], institute_id=attendance['institute_id'],
                                  sync_state=1)
                 await new.save(using_db=conn)
 
@@ -217,16 +222,15 @@ async def get_all():
             if stu is not None:
                 async with in_transaction() as conn:
                     new = StudentAttendance(unique_id=req['unique_id'], sync_state=1, attended=req['attended'],
-                                            attendance_id=attendance.id, student_id=stu.id, time=req[
-                        'time'])
+                                            attendance_id=attendance.id, student_id=stu.id, time=req['time'])
                     await new.save(using_db=conn)
         if req['unique_id'] in student_attendance and req['delete_state'] == 0 and req['patch_state'] == 1:
             stu = await Student.filter(unique_id=req['_student']['unique_id']).first()
-            attendance = await Attendance.filter(unique_id=req['_installment']['unique_id']).first()
+            attendance = await Attendance.filter(unique_id=req['_attendance']['unique_id']).first()
             if stu is not None:
                 await StudentAttendance.filter(unique_id=req['unique_id']).update(sync_state=1,
                                                                                   attended=req['attended'],
-                                                                                  attendance_id=install.id,
+                                                                                  attendance_id=attendance.id,
                                                                                   student_id=stu.id,
                                                                                   time=req['time'])
 
@@ -266,6 +270,30 @@ async def sync():
     unzip_dir(os.path.join(os.getenv('LOCALAPPDATA'),
               'ims', 'images' + ".zip"), path_images)
 
+    attendances = await Attendance.filter(sync_state=0).prefetch_related().all()
+    for attendance in attendances:
+        req = requests.post(f"{HOST}/attendance",
+                            json={"date": str(attendance.date),
+                                  "institute_id": attendance.institute_id, "unique_id": attendance.unique_id})
+        if req.status_code == 200:
+            await Attendance.filter(id=attendance.id).update(sync_state=1)
+
+    students = await Student.all().prefetch_related('institute')
+
+    for student_attend in students:
+        stu_attend = await StudentAttendance.filter(student_id=student_attend.id, sync_state=0).all(). \
+            prefetch_related(
+            'attendance')
+        for attend in stu_attend:
+            json_attend = {"time": str(attend.time), "unique_id": attend.unique_id,
+                           "attended": attend.attended,
+                           "attendance_unique_id": attend.attendance.unique_id,
+                           "student_unique_id": student_attend.unique_id}
+            req = requests.post(
+                f'{HOST}/student-attendance', json=json_attend)
+            if req.status_code == 200:
+                await StudentAttendance.filter(id=attend.id).update(sync_state=1)
+
     all_del = await get_del()
     req = requests.post(f'{HOST}/del', json=all_del)
     users_patch, attendances_patch, students_attendance_patch = await get_edits()
@@ -285,7 +313,8 @@ async def sync():
 
     for attendance_patch in attendances_patch:
         atte = await Attendance.filter(unique_id=attendance_patch).first()
-        attendance_json = {"date": atte.date, "unique_id": atte.unique_id
+        attendance_json = {"date": atte.date, "unique_id": atte.unique_id,
+                           "institute_id": atte.institute_id
                            }
         req = requests.post(f'{HOST}/attendance', json=attendance_json)
         if req.status_code == 200:
@@ -297,10 +326,10 @@ async def sync():
         data_patch = {"time": str(attend_patch.time), "attended": attend_patch.attended,
                       "unique_id": attend_patch.unique_id,
                       "attendance_unique_id": attend_patch.attendance.unique_id,
-                      "student_unique_id": attend_patch.students.unique_id, "patch": True}
+                      "student_unique_id": attend_patch.student.unique_id, "patch": True}
         req = requests.post(f'{HOST}/student-attendance', json=data_patch)
         if req.status_code == 200:
-            await TemporaryPatch.filter(unique_id=install_patch.unique_id).update(sync_state=1)
+            await TemporaryPatch.filter(unique_id=attend_patch.unique_id).update(sync_state=1)
 
     await get_all()
     return {

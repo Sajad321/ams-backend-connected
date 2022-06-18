@@ -4,13 +4,14 @@ from tortoise.transactions import in_transaction
 
 from models.db import Institute, Student, Attendance, StudentAttendance, \
     StudentInstallment, \
-    Installment
+    Installment, TemporaryPatch
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from typing import Optional
 
 from datetime import datetime
 import requests
 from routers.zk_connection import conn
+from uuid import uuid4
 
 router = APIRouter()
 
@@ -24,16 +25,17 @@ async def post_attendance(institute_id, date: str):
         if date != "":
             query = await Attendance.filter(
                 date=date, institute_id=institute_id).all()
-
+            unique_id = uuid4()
             if len(query) == 0:
                 new = Attendance(date=date,
-                                 institute_id=institute_id)
+                                 institute_id=institute_id, unique_id=unique_id)
                 await new.save(using_db=conn)
                 query = await Student.filter(
                     institute_id=institute_id).all()
                 for stu in query:
+                    unique_id2 = uuid4()
                     new_attend = StudentAttendance(
-                        student_id=stu.id, attendance_id=new.id)
+                        student_id=stu.id, attendance_id=new.id, unique_id=unique_id2)
                     await new_attend.save(using_db=conn)
 
                     incremental_absence = await StudentAttendance.filter(
@@ -49,8 +51,11 @@ async def post_attendance(institute_id, date: str):
                             incrementally_absence += 1
                         elif record['attended'] == 1:
                             incrementally_absence = 0
-                    if incrementally_absence > 3:
-                        await Student.filter(id=stu.id).update(banned=1)
+                    # if incrementally_absence > 3:
+                    #     await Student.filter(id=stu.id).update(banned=1)
+                    #     async with in_transaction() as conn:
+                    #         new = TemporaryPatch(unique_id=q['unique_id'], model_id=7)
+                    #         await new.save(using_db=conn)
 
             return {
                 "success": True
@@ -355,22 +360,22 @@ async def students_attendance(number_of_students: int = 100, page: int = 1, inst
 
 @router.patch('/students-attendance')
 async def patch_students_attendance(student_attendance_id: int, attended: int):
-    try:
-        now = datetime.now()
-        now_time = now.strftime("%H:%M")
-        await StudentAttendance.filter(id=student_attendance_id).update(attended=attended, time=now_time)
-        q = await StudentAttendance.filter(id=student_attendance_id).prefetch_related('student').first()
-        async with in_transaction() as conn:
-            new = TemporaryPatch(unique_id=q['unique_id'], model_id=7)
-            await new.save(using_db=conn)
-        return {
-            "success": True,
-            "student_id": q.student.id,
-            "student_attendance_id": student_attendance_id,
-            "student_name": q.student.name
-        }
-    except:
-        raise StarletteHTTPException(500, "internal Server Error")
+    # try:
+    now = datetime.now()
+    now_time = now.strftime("%H:%M")
+    await StudentAttendance.filter(id=student_attendance_id).update(attended=attended, time=now_time)
+    q = await StudentAttendance.filter(id=student_attendance_id).prefetch_related('student').first()
+    async with in_transaction() as conn:
+        new = TemporaryPatch(unique_id=q.unique_id, model_id=7)
+        await new.save(using_db=conn)
+    return {
+        "success": True,
+        "student_id": q.student.id,
+        "student_attendance_id": student_attendance_id,
+        "student_name": q.student.name
+    }
+    # except:
+    #     raise StarletteHTTPException(500, "internal Server Error")
 
 
 # To start students Attendance counting
@@ -397,7 +402,7 @@ async def attendance_start(student_id):
         student_id=student_id).select_related('attendance').order_by('-attendance__date').first()
 
     if student_attendance_id.attended == 1:
-        raise StarletteHTTPException(401, "Unauthorized")
+        return 401
 
     student.update(
         {"student_attendance_id": student_attendance_id.id})
@@ -413,11 +418,7 @@ async def attendance_start(student_id):
             incrementally_absence = 0
 
     attendance_date = await Attendance.filter(id=student_attendance_id.attendance.id).first()
-
-    installments = await StudentInstallment.filter(student_id=student_id
-                                                   ).prefetch_related(
-        Prefetch('installment',
-                 queryset=Installment.filter(date__lte=attendance_date.date)), 'student').all()
+    installments = await StudentInstallment.filter(student_id=student_id, installment__date__lte=attendance_date.date).prefetch_related('installment', 'student').all()
     installments_list = installments
     finalist = []
     stu = {}
@@ -432,23 +433,24 @@ async def attendance_start(student_id):
     student.update({"installments": finalist})
     return student
     # except:
-    #     raise StarletteHTTPException(500, "internal Server Error")
+    #     raise StarletteHTTPException(500, "Internal Server Error")
 
 
 @router.get('/biotime')
 async def get_biotime():
-    # try:
-    if conn:
-        last_finger = None
-        for att in conn.get_attendance():
-            last_finger = att
-        print(last_finger)
-        result = await attendance_start(last_finger.user_id)
-        print(result)
-        # Clear attendances records
-        conn.clear_attendance()
-        if last_finger:
-            return result
-    return StarletteHTTPException(404, "Not Found")
-    # except:
-    #     raise StarletteHTTPException(500, "internal Server Error")
+    try:
+        if conn:
+            last_finger = None
+            for att in conn.get_attendance():
+                last_finger = att
+            print(last_finger)
+            conn.clear_attendance()
+            # Clear attendances records
+            if last_finger:
+                result = await attendance_start(last_finger.user_id)
+                if result == 401:
+                    return StarletteHTTPException(401, "Unauthorized")
+                return result
+        return StarletteHTTPException(404, "Not Found")
+    except Exception as e:
+        return StarletteHTTPException(500, "Internal Server Error")
