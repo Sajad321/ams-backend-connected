@@ -385,7 +385,6 @@ async def attendance_start(student_id):
     # try:
     student_id = await Student.filter(unique_id=student_id).first()
     student_id = student_id.id
-    print(student_id)
     student = await Student.filter(id=student_id).first().prefetch_related('institute')
     student = student.__dict__
     student['institute'] = student['_institute']
@@ -418,7 +417,7 @@ async def attendance_start(student_id):
             incrementally_absence = 0
 
     attendance_date = await Attendance.filter(id=student_attendance_id.attendance.id).first()
-    installments = await StudentInstallment.filter(student_id=student_id, installment__date__lte=attendance_date.date).prefetch_related('installment', 'student').all()
+    installments = await StudentInstallment.filter(student_id=student_id, installment__date__gte=attendance_date.date).prefetch_related('installment', 'student').all()
     installments_list = installments
     finalist = []
     stu = {}

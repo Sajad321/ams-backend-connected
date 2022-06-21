@@ -285,7 +285,7 @@ async def sync():
             prefetch_related(
             'attendance')
         for attend in stu_attend:
-            json_attend = {"time": str(attend.time), "unique_id": attend.unique_id,
+            json_attend = {"time": attend.time, "unique_id": attend.unique_id,
                            "attended": attend.attended,
                            "attendance_unique_id": attend.attendance.unique_id,
                            "student_unique_id": student_attend.unique_id}

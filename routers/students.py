@@ -86,6 +86,7 @@ async def main_admin():
                 institute.update({'daily_attendance': daily_attendance})
             else:
                 institute.update({'daily_attendance': 0})
+        print(result)
         return result
 
     except:
@@ -413,17 +414,16 @@ async def get_student(student_id: int):
 # To get student image & qr by id
 @router.get('/photo')
 async def get_photo(student_id):
-    try:
-        query = await Student.filter(id=student_id).first()
-        image_path = query.photo
-        img = Image.open(image_path)
-        buf = BytesIO()
-        img.save(buf, 'JPEG')
-        buf.seek(0)
-        return StreamingResponse(buf, media_type="image/jpeg")
+    # try:
 
-    except:
-        raise StarletteHTTPException(404, "Not Found")
+    query = await Student.filter(unique_id=student_id).first()
+    image_path = query.photo
+
+    return FileResponse(os.path.join(
+        os.getenv('LOCALAPPDATA'), "ams", image_path))
+
+    # except:
+    #     raise StarletteHTTPException(404, "Not Found")
 
 
 # To change student's photo
@@ -448,13 +448,11 @@ async def get_photo(student_id):
 @router.get('/qr')
 async def get_qr(student_id):
     try:
-        query = await Student.filter(id=student_id).first()
+        query = await Student.filter(unique_id=student_id).first()
         qr_path = query.qr
-        img = Image.open(qr_path)
-        buf = BytesIO()
-        img.save(buf, 'png')
-        buf.seek(0)
-        return StreamingResponse(buf, media_type="image/png")
+
+        return FileResponse(os.path.join(
+            os.getenv('LOCALAPPDATA'), "ams", qr_path))
 
     except:
         raise StarletteHTTPException(404, "Not Found")

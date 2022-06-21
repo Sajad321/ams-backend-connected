@@ -23,7 +23,7 @@ class Student(Model):
     qr = fields.CharField(max_length=100, unique=True, null=True)
     note = fields.TextField(null=True)
     photo = fields.TextField(null=True)
-    banned = fields.IntField(default=0)
+    banned = fields.IntField(null=True, default=0)
     institute = fields.ForeignKeyField('models.Institute', null=True)
     unique_id = fields.TextField()
     sync_state = fields.IntField(default=0)  # 0 offline, 1 synced
